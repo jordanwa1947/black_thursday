@@ -2,13 +2,14 @@ require 'time'
 require 'bigdecimal'
 
 class Item
-  attr_accessor :id,
+  attr_reader :id,
+              :created_at,
+              :merchant_id
+
+  attr_accessor :unit_price,
                 :name,
-                :description,
-                :created_at,
                 :updated_at,
-                :unit_price,
-                :merchant_id
+                :description
 
   def initialize(item_hash)
     @id = item_hash[:id]

@@ -46,7 +46,7 @@ class SalesEngineTest < Minitest::Test
     :transactions => "./data/transactions.csv"
     })
     mr = se.merchants
-    actual = mr.merchants_array[0]
+    actual = mr.objects_array[0]
 
     assert_instance_of Merchant , actual
   end

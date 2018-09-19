@@ -7,7 +7,8 @@ class SalesAnalyst
               :ii,
               :tr
 
-  def initialize(merchant_repository, item_repository, inv_repo, inv_items_repo, transaction_repo)
+  def initialize(merchant_repository, item_repository, inv_repo,
+                                inv_items_repo, transaction_repo)
       @mr = merchant_repository
       @ir = item_repository
       @inv_repo = inv_repo
@@ -61,11 +62,15 @@ class SalesAnalyst
 
   def merchants_with_high_item_count
     average = average_items_per_merchant
-    merchants_hash = items_per_merchant.select do |id, items|
-      (items.count - average) >= 3.26
-    end
+    merchants_hash = select_greater_than_one_stnd_dev(average)
     @mr.objects_array.find_all do |merchant|
       merchants_hash.include?(merchant.id)
+    end
+  end
+
+  def select_greater_than_one_stnd_dev(average)
+    merchants_hash = items_per_merchant.select do |id, items|
+      (items.count - average) >= 3.26
     end
   end
 
@@ -83,7 +88,7 @@ class SalesAnalyst
   end
 
   def average_average_price_per_merchant
-    merchant_id_array = @mr.objects_array.map { |merchant| merchant.id }
+    merchant_id_array = @mr.objects_array.map(&:id)
     average_price_list = merchant_id_array.map do |merchant_id|
       average_item_price_for_merchant(merchant_id)
     end
@@ -141,13 +146,17 @@ class SalesAnalyst
   end
 
   def count_duplicates
-    merchant_invoice_count = {}
+    empty_hash = {}
     merchant_id_array = number_of_invoice_per_merchant
+    pair_merchant_with_invoice_count(empty_hash, merchant_id_array)
+  end
+
+  def pair_merchant_with_invoice_count(empty_hash, merchant_id_array)
     @mr.all.each do |merchant|
       number = merchant_id_array.count(merchant.id)
-      merchant_invoice_count[merchant] = number
+      empty_hash[merchant] = number
     end
-    merchant_invoice_count
+    empty_hash
   end
 
   def top_merchants_by_invoice_count
@@ -169,14 +178,18 @@ class SalesAnalyst
   end
 
   def top_days_by_invoice_count
-    stdn_dev = standard_deviation_of_invoices_per_day
+    stnd_dev = standard_deviation_of_invoices_per_day
     days_hash = number_of_invoices_per_day
     average = average_total_invoices_per_day(days_hash)
-    days_hash = days_hash.select do |day, invoice_total|
-      (invoice_total - average) > stdn_dev
-    end
+    days_hash = select_days_above_stnd_dev(stnd_dev, average, days_hash)
     number = days_hash.keys.flatten
     to_days(number)
+  end
+
+  def select_days_above_stnd_dev(stnd_dev, average, days_hash)
+    days_hash = days_hash.select do |day, invoice_total|
+      (invoice_total - average) > stnd_dev
+    end
   end
 
   def standard_deviation_of_invoices_per_day
@@ -237,7 +250,6 @@ class SalesAnalyst
     end
   end
 
-
   def invoice_total(invoice_id)
     if invoice_paid_in_full?(invoice_id)
       invoice_items = @ii.find_all_by_invoice_id(invoice_id)
@@ -253,18 +265,30 @@ class SalesAnalyst
   end
 
   def total_revenue_by_date(date)
-    invoices_for_date = @inv_repo.objects_array.group_by do |invoice|
+    invoices_for_date = group_invoices_with_string_time
+    invoice_items = find_all_invoice_items_for_invoices(date, invoices_for_date)
+    succesful_transactions = find_all_paid_in_full(invoice_items)
+    multiplied = multiply_unit_price_and_quantity(succesful_transactions)
+    summed_prices(multiplied)
+  end
+
+  def group_invoices_with_string_time
+    @inv_repo.objects_array.group_by do |invoice|
       invoice.created_at.strftime("%Y%m%d")
     end
+  end
+
+  def find_all_invoice_items_for_invoices(date, invoices_for_date)
     specific_date_invoices = invoices_for_date[date.strftime("%Y%m%d")]
     invoice_items = specific_date_invoices.map do |invoice|
       @ii.find_all_by_invoice_id(invoice.id)
     end
-    succesful_transactions = invoice_items.flatten.find_all do |invoice_item|
+  end
+
+  def find_all_paid_in_full(invoice_items)
+    invoice_items.flatten.find_all do |invoice_item|
       invoice_paid_in_full?(invoice_item.invoice_id)
     end
-    multiplied = multiply_unit_price_and_quantity(succesful_transactions)
-    summed_prices(multiplied)
   end
 
   def top_revenue_earners(number = 20)
@@ -348,16 +372,13 @@ class SalesAnalyst
   end
 
   def most_sold_item_for_merchant(merchant_id)
-    grouped_invoices_with_merchant = invoices_by_merchant
-    specific_merchant_invoices = grouped_invoices_with_merchant[merchant_id]
-    invoice_items_array = specific_merchant_invoices.map do |invoice|
-      if invoice_paid_in_full?(invoice.id)
-        @ii.find_all_by_invoice_id(invoice.id)
-      end
-    end.compact
-    item_id_to_inv_item = invoice_items_array.flatten.group_by do |invoice_item|
-      invoice_item.item_id
-    end
+    inv_items = specific_invoices_for_merchant(merchant_id)
+    item_id_to_inv_item = group_invoice_items_by_ids(inv_items)
+    hash = pair_item_id_with_top_invoice(item_id_to_inv_item)
+    output_tied_for_top(hash)
+  end
+
+  def pair_item_id_with_top_invoice(item_id_to_inv_item)
     hash = {}
     item_id_to_inv_item.each do |item_id, invoice_items|
       top_invoice = invoice_items.max_by do |inv_item|
@@ -365,33 +386,58 @@ class SalesAnalyst
       end
       hash[item_id] = top_invoice
     end
+    hash
+  end
+
+  def output_tied_for_top(hash)
     top_item = hash.max_by { |item_id, invoice_item| invoice_item.quantity }
-    item_ids_array = hash.map do |invoice_id, invoice_item|
-      @ir.find_by_id(invoice_id) if top_item[1].quantity == invoice_item.quantity
+    item_ids_array = hash.map do |invoice_id, inv_item|
+      @ir.find_by_id(invoice_id) if top_item[1].quantity == inv_item.quantity
     end
     item_ids_array.compact
   end
 
   def best_item_for_merchant(merchant_id)
+    inv_items = specific_invoices_for_merchant(merchant_id)
+    inv_id_to_inv_item = group_invoice_items_by_ids(inv_items)
+    array_of_hashes = group_inv_items_with_inv_item_total(inv_id_to_inv_item)
+    top_rev_item = top_revenue_item(array_of_hashes)
+    @ir.find_by_id(top_rev_item.values[0][0].item_id)
+  end
+
+  def specific_invoices_for_merchant(merchant_id)
     grouped_invoices_with_merchant = invoices_by_merchant
     specific_merchant_invoices = grouped_invoices_with_merchant[merchant_id]
-    invoice_items_array = specific_merchant_invoices.map do |invoice|
+    filter_invoices_paid_in_full(specific_merchant_invoices)
+  end
+
+  def filter_invoices_paid_in_full(specific_merchant_invoices)
+    specific_merchant_invoices.map do |invoice|
       if invoice_paid_in_full?(invoice.id)
         @ii.find_all_by_invoice_id(invoice.id)
       end
     end.compact
+  end
+
+  def group_invoice_items_by_ids(invoice_items_array)
     item_id_to_inv_item = invoice_items_array.flatten.group_by do |invoice_item|
       invoice_item.item_id
     end
-    array_of_hashes = item_id_to_inv_item.map do |item_id, invoice_items|
+  end
+
+
+  def group_inv_items_with_inv_item_total(inv_id_to_inv_item)
+    inv_id_to_inv_item.map do |item_id, invoice_items|
       top_invoice = invoice_items.group_by do |inv_item|
         multiply_unit_price_and_quantity([inv_item])
       end
     end
-    top_rev_item = array_of_hashes.max_by do |total, invoice_item|
+  end
+
+  def top_revenue_item(array_of_hashes)
+    array_of_hashes.max_by do |total, invoice_item|
       total.keys[0]
     end
-    @ir.find_by_id(top_rev_item.values[0][0].item_id)
   end
 
 end
