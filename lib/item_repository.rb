@@ -43,9 +43,9 @@ class ItemRepository
   end
 
   def find_all_by_price_in_range(range)
-    integers = range.to_s.split('..')
+    ints = range.to_s.split('..')
     @objects_array.find_all do |item|
-      item.unit_price >= integers[0].to_i and item.unit_price <= integers[1].to_i
+      item.unit_price >= ints[0].to_i and item.unit_price <= ints[1].to_i
     end
   end
 
