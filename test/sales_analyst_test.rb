@@ -237,4 +237,157 @@ class SalesAnalystTest < Minitest::Test
     assert_instance_of BigDecimal, sales_analyst.invoice_total(1)
 
   end
+
+  def test_total_revenue_by_date_returns_total_revenue_for_invoices
+    se = SalesEngine.from_csv({
+    :items     => "./data/items.csv",
+    :merchants => "./data/merchants.csv",
+    :invoices => "./data/invoices.csv",
+    :customers => "./data/customers.csv",
+    :invoice_items => "./data/invoice_items.csv",
+    :transactions => "./data/transactions.csv"})
+    sales_analyst = se.analyst
+
+    date = Time.parse("2009-02-07")
+    expected = sales_analyst.total_revenue_by_date(date)
+
+    assert_equal 21067.77, expected
+    assert_instance_of BigDecimal, expected
+  end
+
+  def test_that_top_revenue_earners_returns_array_of_such
+    se = SalesEngine.from_csv({
+    :items     => "./data/items.csv",
+    :merchants => "./data/merchants.csv",
+    :invoices => "./data/invoices.csv",
+    :customers => "./data/customers.csv",
+    :invoice_items => "./data/invoice_items.csv",
+    :transactions => "./data/transactions.csv"})
+    sales_analyst = se.analyst
+
+    expected = sales_analyst.top_revenue_earners(10)
+
+    assert_equal 10, expected.count
+    assert_instance_of Merchant, expected.first
+    assert_equal 12334634, expected.first.id
+    assert_equal 12335747, expected.last.id
+  end
+
+  def test_that_top_revenue_earners_defaults_to_20_merchants
+    se = SalesEngine.from_csv({
+    :items     => "./data/items.csv",
+    :merchants => "./data/merchants.csv",
+    :invoices => "./data/invoices.csv",
+    :customers => "./data/customers.csv",
+    :invoice_items => "./data/invoice_items.csv",
+    :transactions => "./data/transactions.csv"})
+    sales_analyst = se.analyst
+
+    expected = sales_analyst.top_revenue_earners
+
+    assert_equal 20, expected.count
+    assert_instance_of Merchant, expected.first
+    assert_equal 12334634, expected.first.id
+    assert_equal 12334159, expected.last.id
+  end
+
+  def test_merchants_with_pending_invoices_returns_merchants_with_pending_invs
+    se = SalesEngine.from_csv({
+    :items     => "./data/items.csv",
+    :merchants => "./data/merchants.csv",
+    :invoices => "./data/invoices.csv",
+    :customers => "./data/customers.csv",
+    :invoice_items => "./data/invoice_items.csv",
+    :transactions => "./data/transactions.csv"})
+    sales_analyst = se.analyst
+
+    actual = sales_analyst.merchants_with_pending_invoices
+
+    assert_equal 467, actual.count
+    assert_instance_of Merchant, actual.first
+  end
+
+  def test_merchants_with_only_one_item_returns_merchants_with_one_item
+    se = SalesEngine.from_csv({
+    :items     => "./data/items.csv",
+    :merchants => "./data/merchants.csv",
+    :invoices => "./data/invoices.csv",
+    :customers => "./data/customers.csv",
+    :invoice_items => "./data/invoice_items.csv",
+    :transactions => "./data/transactions.csv"})
+    sales_analyst = se.analyst
+
+    actual = sales_analyst.merchants_with_only_one_item
+
+    assert_equal 243, actual.count
+    assert_instance_of Merchant, actual.first
+  end
+
+  def test_merchants_with_only_one_item_registered_in_month
+    se = SalesEngine.from_csv({
+    :items     => "./data/items.csv",
+    :merchants => "./data/merchants.csv",
+    :invoices => "./data/invoices.csv",
+    :customers => "./data/customers.csv",
+    :invoice_items => "./data/invoice_items.csv",
+    :transactions => "./data/transactions.csv"})
+    sales_analyst = se.analyst
+
+    actual = sales_analyst.merchants_with_only_one_item_registered_in_month("March")
+
+    assert_equal 21, actual.count
+    assert_instance_of Merchant, actual.first
+  end
+
+  def test_that_revenue_by_merchant_returns_individual
+    se = SalesEngine.from_csv({
+    :items     => "./data/items.csv",
+    :merchants => "./data/merchants.csv",
+    :invoices => "./data/invoices.csv",
+    :customers => "./data/customers.csv",
+    :invoice_items => "./data/invoice_items.csv",
+    :transactions => "./data/transactions.csv"})
+    sales_analyst = se.analyst
+    top_five = sales_analyst.top_revenue_earners(5)
+
+    top_5_total_revenue = top_five.max_by(5) do |merchant|
+       bigD = sales_analyst.revenue_by_merchant(merchant.id)
+    end
+    assert top_five == top_5_total_revenue
+  end
+
+  def test_that_most_sold_items_for_merchant_returns_most_sold_item
+    se = SalesEngine.from_csv({
+    :items     => "./data/items.csv",
+    :merchants => "./data/merchants.csv",
+    :invoices => "./data/invoices.csv",
+    :customers => "./data/customers.csv",
+    :invoice_items => "./data/invoice_items.csv",
+    :transactions => "./data/transactions.csv"})
+    top_items = se.analyst.most_sold_item_for_merchant(12334189)
+    top_4_items = se.analyst.most_sold_item_for_merchant(12337105)
+
+    assert top_items.map(&:id).include?(263524984)
+    assert top_items.map(&:name).include?("Adult Princess Leia Hat")
+    assert_equal 4, top_4_items.count
+  end
+
+  def test_best_item_for_merchant_returns_most_sold_merchant
+    se = SalesEngine.from_csv({
+    :items     => "./data/items.csv",
+    :merchants => "./data/merchants.csv",
+    :invoices => "./data/invoices.csv",
+    :customers => "./data/customers.csv",
+    :invoice_items => "./data/invoice_items.csv",
+    :transactions => "./data/transactions.csv"})
+    top_item = se.analyst.best_item_for_merchant(12334189)
+
+    assert_equal 263516130, top_item.id
+    assert_instance_of Item, top_item
+
+    top_item2 = se.analyst.best_item_for_merchant(12337105)
+
+    assert_equal 263463003, top_item2.id
+    assert_instance_of Item, top_item2
+  end
 end
